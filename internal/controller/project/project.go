@@ -52,13 +52,8 @@ const (
 	errNewClient = "cannot create new Service"
 )
 
-// A HarborService is the defaultClient Service
-type HarborService struct {
-	harborClientSet *apiv2.RESTClient
-}
-
 var (
-	newHarborClientSetService = func(creds []byte, harborUrl string) (*HarborService, error) {
+	newHarborClientSetService = func(creds []byte, harborUrl string) (*apiv2.RESTClient, error) {
 		stringCreds := string(creds)
 		splitCreds := strings.Split(stringCreds, ":")
 		username := splitCreds[0]
@@ -69,8 +64,7 @@ var (
 		if err != nil {
 			return nil, err
 		}
-		harbourService := HarborService{harborClientSet: client}
-		return &harbourService, nil
+		return client, nil
 	}
 )
 
@@ -107,7 +101,7 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 type connector struct {
 	kube         client.Client
 	usage        resource.Tracker
-	newServiceFn func(creds []byte, harborUrl string) (*HarborService, error)
+	newServiceFn func(creds []byte, harborUrl string) (*apiv2.RESTClient, error)
 }
 
 // Connect typically produces an ExternalClient by:
@@ -146,7 +140,7 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 type external struct {
 	// A 'client' used to connect to the external resource API. In practice this
 	// would be something like an AWS SDK client.
-	service *HarborService
+	service *apiv2.RESTClient
 }
 
 func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.ExternalObservation, error) {
@@ -155,7 +149,7 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		return managed.ExternalObservation{}, errors.New(errNotProject)
 	}
 
-	getProject, err := c.service.harborClientSet.ProjectExists(ctx, meta.GetExternalName(cr))
+	getProject, err := c.service.ProjectExists(ctx, meta.GetExternalName(cr))
 	if err != nil {
 		return managed.ExternalObservation{}, err
 	}
@@ -164,7 +158,7 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		return managed.ExternalObservation{ResourceExists: false}, nil
 	}
 
-	getFromServer, err := c.service.harborClientSet.GetProject(ctx, meta.GetExternalName(cr))
+	getFromServer, err := c.service.GetProject(ctx, meta.GetExternalName(cr))
 
 	if err != nil {
 		return managed.ExternalObservation{}, err
@@ -208,7 +202,7 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		ReuseSysCVEAllowlist:     cr.Spec.ForProvider.Metadata.ReuseSysCVEAllowlist,
 		Severity:                 cr.Spec.ForProvider.Metadata.Severity,
 	}
-	err := c.service.harborClientSet.NewProject(ctx, &modelv2.ProjectReq{
+	err := c.service.NewProject(ctx, &modelv2.ProjectReq{
 		ProjectName: meta.GetExternalName(cr),
 		Metadata:    projMeta,
 	})
@@ -231,9 +225,9 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	if err != nil {
 		return managed.ExternalUpdate{}, err
 	}
-	getFromServer, _ := c.service.harborClientSet.GetProject(ctx, meta.GetExternalName(cr))
+	getFromServer, _ := c.service.GetProject(ctx, meta.GetExternalName(cr))
 	*getFromServer.Metadata = getSource
-	err = c.service.harborClientSet.UpdateProject(ctx, getFromServer, nil)
+	err = c.service.UpdateProject(ctx, getFromServer, nil)
 	if err != nil {
 		return managed.ExternalUpdate{
 			ConnectionDetails: managed.ConnectionDetails{},
@@ -254,7 +248,7 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) error {
 	if !ok {
 		return errors.Wrap(nil, "Delete Database failed!")
 	}
-	err := c.service.harborClientSet.DeleteProject(ctx, cr.GetName())
+	err := c.service.DeleteProject(ctx, cr.GetName())
 
 	if err != nil {
 		return err

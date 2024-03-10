@@ -20,11 +20,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
-
-	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
-	"github.com/crossplane/crossplane-runtime/pkg/resource"
-	"github.com/crossplane/crossplane-runtime/pkg/test"
+	"github.com/mittwald/goharbor-client/v5/apiv2"
+	"github.com/mittwald/goharbor-client/v5/apiv2/model"
+	pj "github.com/mittwald/goharbor-client/v5/apiv2/pkg/clients/project"
+	"github.com/stretchr/testify/mock"
 )
 
 // Unlike many Kubernetes projects Crossplane does not use third party testing
@@ -35,41 +34,63 @@ import (
 // https://github.com/golang/go/wiki/TestComments
 // https://github.com/crossplane/crossplane/blob/master/CONTRIBUTING.md#contributing-code
 
+type MockExternal struct {
+	mock.Mock
+	*apiv2.RESTClient
+}
+
+// DeleteProject implements project.Client.
+func (m *MockExternal) DeleteProject(ctx context.Context, nameOrID string) error {
+	panic("unimplemented")
+}
+
+// GetProject implements project.Client.
+func (m *MockExternal) GetProject(ctx context.Context, nameOrID string) (*model.Project, error) {
+	panic("unimplemented")
+}
+
+// ListProjects implements project.Client.
+func (m *MockExternal) ListProjects(ctx context.Context, nameFilter string) ([]*model.Project, error) {
+	panic("unimplemented")
+}
+
+// NewProject implements project.Client.
+func (m *MockExternal) NewProject(ctx context.Context, projectRequest *model.ProjectReq) error {
+	return nil
+}
+
+// ProjectExists implements project.Client.
+func (m *MockExternal) ProjectExists(ctx context.Context, nameOrID string) (bool, error) {
+	return true, nil
+}
+
+// UpdateProject implements project.Client.
+func (m *MockExternal) UpdateProject(ctx context.Context, p *model.Project, storageLimit *int64) error {
+	panic("unimplemented")
+}
+
+var _ pj.Client = &MockExternal{}
+
+type testtt struct {
+	service *apiv2.RESTClient
+}
+
+func (t *testtt) Obs(ctx context.Context, val string) (bool, error) {
+	return t.service.ProjectExists(ctx, val)
+}
+
 func TestObserve(t *testing.T) {
-	type fields struct {
-		service interface{}
+
+	client := &MockExternal{}
+	ctx := context.Background()
+	client.On("ProjectExists", mock.MatchedBy(func(context.Context, string) (bool, error) { return true, nil }), ctx, "example").Return(true, nil)
+	ext := &testtt{
+		service: client.RESTClient,
+	}
+	res, err := ext.Obs(context.Background(), "example")
+
+	if res == true && err == nil {
+		t.Log(res)
 	}
 
-	type args struct {
-		ctx context.Context
-		mg  resource.Managed
-	}
-
-	type want struct {
-		o   managed.ExternalObservation
-		err error
-	}
-
-	cases := map[string]struct {
-		reason string
-		fields fields
-		args   args
-		want   want
-	}{
-		// TODO: Add test cases.
-	}
-
-	for name, tc := range cases {
-		t.Run(name, func(t *testing.T) {
-			tmp := tc.fields.service
-			e := external{service: tmp.(*HarborService)}
-			got, err := e.Observe(tc.args.ctx, tc.args.mg)
-			if diff := cmp.Diff(tc.want.err, err, test.EquateErrors()); diff != "" {
-				t.Errorf("\n%s\ne.Observe(...): -want error, +got error:\n%s\n", tc.reason, diff)
-			}
-			if diff := cmp.Diff(tc.want.o, got); diff != "" {
-				t.Errorf("\n%s\ne.Observe(...): -want, +got:\n%s\n", tc.reason, diff)
-			}
-		})
-	}
 }
